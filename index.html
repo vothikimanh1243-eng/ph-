@@ -13,9 +13,10 @@
         button { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; color: white; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 12px; }
         .btn-scan { background: #0dcaf0; color: #212529; }
         .btn-connect { background: #198754; }
+        .btn-switch { background: #ffc107; color: #212529; display: none; }
         .btn-close { background: #dc3545; }
         input { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 6px; margin-bottom: 15px; font-size: 1.2rem; text-align: center; font-weight: bold; color: #0d6efd; }
-        #scanner-container { display: none; margin: 15px 0; border: 2px dashed #0dcaf0; border-radius: 8px; overflow: hidden; }
+        #scanner-container { display: none; margin: 15px 0; border: 2px dashed #0dcaf0; border-radius: 8px; padding: 10px; background: #fff; }
         #qr-reader { width: 100%; background: #000; }
         #local-preview { width: 100%; max-height: 200px; background: #000; border-radius: 6px; margin-bottom: 15px; display: none; }
         #conn-status { font-weight: bold; color: #0d6efd; margin-top: 15px; }
@@ -28,20 +29,25 @@
     <h2>Thiết Bị Giám Sát (Máy Phụ)</h2>
     
     <div id="control-panel">
-        <!-- Cách 1: Ở gần thì quét QR -->
+        <!-- Cách 1: Quét QR -->
         <button id="scan-btn" class="btn-scan">Quét Mã QR (Nếu ở gần)</button>
         
         <div id="scanner-container">
-            <div id="qr-reader"></div>
+            <div id="reader-wrapper">
+                <div id="qr-reader"></div>
+            </div>
             <button id="stop-scan-btn" class="btn-close" style="width:auto; padding:5px 10px; margin:5px;">Đóng Camera Quét</button>
         </div>
 
         <div class="or-text">HOẶC NHẬP MÃ SỐ TỪ XA</div>
 
-        <!-- Cách 2: Ở xa thì tự điền 6 số hiển thị trên máy Admin -->
+        <!-- Cách 2: Nhập số -->
         <input type="number" id="admin-id-input" placeholder="Nhập 6 chữ số của Admin">
         
         <video id="local-preview" autoplay playsinline muted></video>
+
+        <!-- Nút chuyển đổi camera (Ẩn ban đầu, hiện khi kết nối) -->
+        <button id="switch-btn" class="btn-switch">🔄 Đổi sang Camera Trước</button>
 
         <button id="connect-btn" class="btn-connect">Bắt Đầu Truyền Camera</button>
     </div>
@@ -51,13 +57,15 @@
 
 <script>
     const peer = new Peer();
-    const html5QrCode = new Html5Qrcode("qr-reader");
+    let html5QrCode = null;
     let localStream = null;
     let peerCall = null;
+    
+    // Biến lưu trạng thái camera hiện tại: "environment" (sau) hoặc "user" (trước)
+    let currentFacingMode = "environment"; 
+    let savedAdminId = "";
 
-    // Khi quét QR thành công
     async function onScanSuccess(decodedText) {
-        // Tách lấy chuỗi số để điền vào ô input
         const cleanId = decodedText.replace('admin-', '');
         document.getElementById('admin-id-input').value = cleanId;
         document.getElementById('conn-status').innerText = "Trạng thái: Đã quét được ID. Sẵn sàng kết nối.";
@@ -65,60 +73,87 @@
     }
 
     async function turnOffCamera() {
-        try { if (html5QrCode.isScanning) { await html5QrCode.stop(); } } catch (e) {}
+        if (html5QrCode) {
+            try { if (html5QrCode.isScanning) { await html5QrCode.stop(); } } catch (e) {}
+            html5QrCode = null;
+        }
+        const wrapper = document.getElementById('reader-wrapper');
+        if (wrapper) { wrapper.innerHTML = '<div id="qr-reader"></div>'; }
         document.getElementById('scanner-container').style.display = 'none';
     }
 
     document.getElementById('scan-btn').addEventListener('click', () => {
         document.getElementById('scanner-container').style.display = 'block';
+        html5QrCode = new Html5Qrcode("qr-reader");
         html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 220 }, onScanSuccess)
-        .catch(err => alert("Không mở được camera quét. Hãy nhập mã số trực tiếp bên dưới."));
+        .catch(err => {
+            alert("Không mở được camera quét. Hãy nhập mã số trực tiếp bên dưới.");
+            document.getElementById('scanner-container').style.display = 'none';
+        });
     });
 
     document.getElementById('stop-scan-btn').addEventListener('click', turnOffCamera);
 
-    // Xử lý kích hoạt truyền dữ liệu (Bấm nút số 2)
+    // Hàm khởi chạy luồng camera theo cấu hình hướng camera
+    async function openMediaDevices(facingMode) {
+        // Tắt luồng cũ đang chạy để giải phóng phần cứng hoàn toàn trước khi đổi
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+
+        return await navigator.mediaDevices.getUserMedia({
+            video: { 
+                facingMode: facingMode, 
+                width: { ideal: 1280 }, 
+                height: { ideal: 720 } 
+            },
+            audio: false
+        });
+    }
+
+    // Xử lý khi nhấn nút bắt đầu truyền dữ liệu
     document.getElementById('connect-btn').addEventListener('click', async function startStream() {
         let inputId = document.getElementById('admin-id-input').value.trim();
         if (!inputId) {
-            alert("Vui lòng điền 6 chữ số kết nối hiển thị bên máy Admin!");
+            alert("Vui lòng điền mã số hiển thị bên máy Admin!");
             return;
         }
 
-        // Tự động chuẩn hóa định dạng ID chuẩn đồng bộ với Admin
-        if (!inputId.startsWith('admin-')) {
-            inputId = 'admin-' + inputId;
-        }
+        if (!inputId.startsWith('admin-')) { inputId = 'admin-' + inputId; }
+        savedAdminId = inputId;
 
         try {
-            document.getElementById('conn-status').innerText = "Đang ngắt camera quét QR...";
+            document.getElementById('conn-status').innerText = "Đang giải phóng camera quét...";
             await turnOffCamera();
+            await new Promise(resolve => setTimeout(resolve, 200));
 
-            document.getElementById('conn-status').innerText = "Đang kết nối camera sau...";
-            localStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false
-            });
+            document.getElementById('conn-status').innerText = "Đang kết nối camera...";
+            
+            // Lấy luồng camera ban đầu (Mặc định camera sau)
+            localStream = await openMediaDevices(currentFacingMode);
 
             document.getElementById('local-preview').srcObject = localStream;
             document.getElementById('local-preview').style.display = 'block';
             document.getElementById('conn-status').innerText = "Trạng thái: Đang truyền dữ liệu...";
             
-            // Ẩn bớt các nút thừa khi đang chạy
+            // Thay đổi giao diện
             document.getElementById('scan-btn').style.display = 'none';
             document.getElementById('admin-id-input').style.display = 'none';
+            document.getElementById('control-panel').querySelector('.or-text').style.display = 'none';
+            document.getElementById('switch-btn').style.display = 'block'; // Hiện nút đổi camera
             
             const connectBtn = document.getElementById('connect-btn');
             connectBtn.innerText = "Ngắt kết nối dữ liệu";
             connectBtn.className = "btn-close";
             connectBtn.removeEventListener('click', startStream);
+            
             connectBtn.onclick = function() {
                 if (localStream) localStream.getTracks().forEach(t => t.stop());
                 location.reload();
             };
 
-            // Thực hiện cuộc gọi tới Admin bằng ID (Quét được hoặc Nhập tay đều như nhau)
-            peerCall = peer.call(inputId, localStream);
+            // Thực hiện gửi dữ liệu sang Admin
+            peerCall = peer.call(savedAdminId, localStream);
             peerCall.on('close', () => {
                 if (localStream) localStream.getTracks().forEach(t => t.stop());
                 location.reload();
@@ -126,9 +161,42 @@
 
         } catch (err) {
             console.error(err);
-            document.getElementById('conn-status').innerText = "Trạng thái: Lỗi chiếm quyền phần cứng Camera.";
+            document.getElementById('conn-status').innerText = "Trạng thái: Thất bại. Lỗi chiếm quyền camera.";
+        }
+    });
+
+    // Xử lý sự kiện nút Chuyển đổi camera trước/sau
+    document.getElementById('switch-btn').addEventListener('click', async () => {
+        // Đảo trạng thái camera
+        currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+        document.getElementById('switch-btn').innerText = (currentFacingMode === "environment") ? "🔄 Đổi sang Camera Trước" : "🔄 Đổi sang Camera Sau";
+        document.getElementById('conn-status').innerText = "Đang chuyển đổi camera...";
+
+        try {
+            // 1. Khởi tạo luồng camera mới
+            localStream = await openMediaDevices(currentFacingMode);
+            document.getElementById('local-preview').srcObject = localStream;
+
+            // 2. Cập nhật luồng mới cho cuộc gọi PeerJS hiện tại để bên Admin tự động nhận diện
+            if (peerCall && peerCall.peerConnection) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                const senders = peerCall.peerConnection.getSenders();
+                const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+                
+                if (videoSender) {
+                    await videoSender.replaceTrack(videoTrack);
+                    document.getElementById('conn-status').innerText = "Trạng thái: Đang truyền dữ liệu (Đã đổi camera)...";
+                } else {
+                    // Phương án dự phòng nếu trình duyệt không hỗ trợ replaceTrack: Gọi lại cuộc gọi mới
+                    peerCall.close();
+                    peerCall = peer.call(savedAdminId, localStream);
+                }
+            }
+        } catch (err) {
+            console.error("Lỗi khi chuyển đổi camera:", err);
+            document.getElementById('conn-status').innerText = "Lỗi khi chuyển đổi hướng camera.";
         }
     });
 </script>
 </body>
-</html
+</html>
