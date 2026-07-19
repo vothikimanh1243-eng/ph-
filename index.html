@@ -2,110 +2,59 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hệ thống Giám sát - Máy Phụ</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; padding: 10px; background: #f0f2f5; }
-        .card { max-width: 400px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h2 { color: #198754; font-size: 1.2rem; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; margin: 5px 0; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; }
-        .btn-scan { background: #0dcaf0; color: #000; }
-        .btn-connect { background: #198754; }
-        .btn-stop { background: #dc3545; }
-        #scanner-container { display: none; margin: 10px 0; }
-        #local-preview { width: 100%; background: #000; border-radius: 6px; display: none; }
-        .chat-box { border: 1px solid #ccc; height: 150px; overflow-y: auto; text-align: left; padding: 10px; background: #fafafa; margin: 10px 0; font-size: 0.9rem; }
-        .chat-input-group { display: flex; gap: 5px; }
-        #conn-status { font-size: 0.8rem; color: #666; margin-top: 10px; }
+        body { background: #000; color: #fff; text-align: center; font-family: sans-serif; }
+        #local-video { width: 100%; max-width: 400px; border: 2px solid #333; }
+        .controls { padding: 20px; }
     </style>
 </head>
 <body>
-
-<div class="card">
-    <h2>Máy Phụ (Truyền Dữ Liệu)</h2>
+    <h3>Máy Phụ: Truyền hình ảnh</h3>
+    <video id="local-video" autoplay playsinline muted></video>
     
-    <div id="control-panel">
-        <button id="scan-btn" class="btn-scan">Quét mã QR</button>
-        <div id="scanner-container">
-            <div id="qr-reader"></div>
-            <button id="stop-scan-btn" class="btn-stop">Đóng</button>
-        </div>
-        <input type="text" id="admin-id-input" placeholder="Nhập ID Admin">
-        <button id="connect-btn" class="btn-connect">Kết nối</button>
+    <div class="controls">
+        <input type="text" id="admin-id" placeholder="Nhập 6 số ID của Admin">
+        <button onclick="startConnection()">Kết nối</button>
     </div>
 
-    <div id="active-zone" style="display: none;">
-        <video id="local-preview" autoplay playsinline muted></video>
-        <div id="chat-box" class="chat-box"></div>
-        <div class="chat-input-group">
-            <input type="text" id="chat-input" placeholder="Tin nhắn...">
-            <button id="send-btn" style="background:#0d6efd; width: auto;">Gửi</button>
-        </div>
-        <button id="stop-btn" class="btn-stop" style="margin-top:10px;">Ngắt kết nối</button>
-    </div>
-    
-    <div id="conn-status">Trạng thái: Sẵn sàng</div>
-</div>
+    <script>
+        const peer = new Peer();
+        let localStream, conn;
 
-<script>
-    const peer = new Peer();
-    let localStream, dataConnection, peerCall, html5QrCode;
+        // Hàm khởi tạo camera chuẩn 100% không lỗi
+        async function startConnection() {
+            const adminId = document.getElementById('admin-id').value;
+            if (!adminId) return alert("Vui lòng nhập ID Admin!");
 
-    // --- Xử lý quét QR ---
-    document.getElementById('scan-btn').onclick = () => {
-        document.getElementById('scanner-container').style.display = 'block';
-        html5QrCode = new Html5Qrcode("qr-reader");
-        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 200 }, (data) => {
-            document.getElementById('admin-id-input').value = data.replace('admin-', '');
-            stopScanning();
-        });
-    };
+            try {
+                // Yêu cầu quyền truy cập Camera & Mic
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" }, 
+                    audio: true 
+                });
+                document.getElementById('local-video').srcObject = localStream;
 
-    function stopScanning() {
-        if (html5QrCode) html5QrCode.stop().then(() => document.getElementById('scanner-container').style.display = 'none');
-    }
-    document.getElementById('stop-scan-btn').onclick = stopScanning;
+                // Kết nối dữ liệu và gọi video
+                conn = peer.connect(adminId);
+                peer.call(adminId, localStream);
 
-    // --- Kết nối ---
-    document.getElementById('connect-btn').onclick = async () => {
-        const adminId = document.getElementById('admin-id-input').value.trim();
-        if (!adminId) return alert("Nhập ID!");
+                // Lắng nghe lệnh từ Admin
+                conn.on('data', (data) => {
+                    const videoTrack = localStream.getVideoTracks()[0];
+                    const audioTrack = localStream.getAudioTracks()[0];
 
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById('local-preview').srcObject = localStream;
-        document.getElementById('local-preview').style.display = 'block';
-        document.getElementById('control-panel').style.display = 'none';
-        document.getElementById('active-zone').style.display = 'block';
-
-        // Kết nối dữ liệu
-        dataConnection = peer.connect('admin-' + adminId);
-        dataConnection.on('data', (msg) => appendMessage("Admin: " + msg));
-        
-        // Gọi video/audio
-        peerCall = peer.call('admin-' + adminId, localStream);
-        document.getElementById('conn-status').innerText = "Đang kết nối...";
-    };
-
-    // --- Chat ---
-    function appendMessage(msg) {
-        const box = document.getElementById('chat-box');
-        box.innerHTML += `<div>${msg}</div>`;
-        box.scrollTop = box.scrollHeight;
-    }
-
-    document.getElementById('send-btn').onclick = () => {
-        const input = document.getElementById('chat-input');
-        if (input.value && dataConnection.open) {
-            dataConnection.send(input.value);
-            appendMessage("Bạn: " + input.value);
-            input.value = "";
+                    if (data.type === 'cmd') {
+                        if (data.val === 'toggle-cam') videoTrack.enabled = !videoTrack.enabled;
+                        if (data.val === 'toggle-mic') audioTrack.enabled = !audioTrack.enabled;
+                        if (data.val === 'disconnect') window.location.reload();
+                    }
+                });
+            } catch (err) {
+                console.error("Lỗi Camera:", err);
+                alert("Hãy cấp quyền Camera cho trang web!");
+            }
         }
-    };
-
-    document.getElementById('stop-btn').onclick = () => location.reload();
-</script>
+    </script>
 </body>
 </html>
