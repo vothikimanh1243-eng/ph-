@@ -2,96 +2,38 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Máy Phụ - Control Panel</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-   <style>
-    body { font-family: 'Segoe UI', sans-serif; background-color: #0f0f0f; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-    #local-video { width: 400px; height: 225px; background: #000; border-radius: 10px; border: 2px solid #444; margin-bottom: 15px; }
-    
-    .controls { display: flex; gap: 10px; margin-bottom: 20px; }
-    button { padding: 10px 20px; border-radius: 8px; border: none; background: #28a745; color: white; cursor: pointer; font-weight: bold; }
-    button:hover { background: #218838; }
-
-    /* Chat giống bên Admin */
-    .chat-panel { width: 300px; height: 300px; border: 1px solid #333; border-radius: 10px; background: #1a1a1a; padding: 10px; }
-    #chat-box { height: 80%; overflow-y: auto; border-bottom: 1px solid #333; margin-bottom: 5px; }
-</style>
+    <style>
+        /* Sử dụng cùng style với Admin ở trên */
+        body { background: #0f0f0f; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; font-family: sans-serif; }
+        .panel { background: #1a1a1a; padding: 20px; border-radius: 20px; width: 400px; }
+        video { width: 100%; border-radius: 15px; }
+        button { padding: 12px; width: 100%; border: none; border-radius: 12px; background: #28a745; color: white; margin-top: 10px; cursor: pointer; }
+    </style>
 </head>
 <body>
-    <div class="main-col">
+    <div class="panel">
         <h2>Máy Phụ</h2>
-        <div class="connect-box">
-            <input type="text" id="admin-id" placeholder="Nhập ID Admin">
-            <button onclick="startConnection()">Kết nối</button>
-        </div>
+        <input id="admin-id" placeholder="ID Admin" style="padding: 10px; width: 90%; border-radius: 10px;">
+        <button onclick="startConnection()">Kết Nối</button>
         <video id="local-video" autoplay playsinline muted></video>
-        
-        <div class="controls">
-            <button onclick="toggleMyDevice('cam')">📷 Cam</button>
-            <button onclick="toggleMyDevice('mic')">🎙️ Mic</button>
-            <button onclick="swapMyCam()">🔄 Đổi Cam</button>
-        </div>
+        <button class="danger" onclick="window.location.reload()">❌ Ngắt Kết Nối</button>
     </div>
-
-    <div class="chat-col">
-        <div id="chat-box"></div>
-        <div style="display:flex; padding:5px;">
-            <input type="text" id="chat-input" style="flex:1" placeholder="Chat với Admin..." onkeypress="if(event.key==='Enter') sendMsg()">
-            <button onclick="sendMsg()">Gửi</button>
-        </div>
-    </div>
-
     <script>
         const peer = new Peer();
-        let localStream, conn, currentFacingMode = 'user';
-
+        let conn, localStream;
         async function startConnection() {
-            const adminId = document.getElementById('admin-id').value;
-            localStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: currentFacingMode}, audio: true});
+            const id = document.getElementById('admin-id').value;
+            localStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
             document.getElementById('local-video').srcObject = localStream;
-            
-            conn = peer.connect(adminId);
-            peer.call(adminId, localStream);
-            
+            conn = peer.connect(id);
+            peer.call(id, localStream);
             conn.on('data', (data) => {
+                if(data.val === 'disconnect') window.location.reload();
                 if(data.type === 'cmd') {
-                    if(data.val === 'toggle-cam') toggleMyDevice('cam');
-                    if(data.val === 'toggle-mic') toggleMyDevice('mic');
-                    if(data.val === 'swap-cam') swapMyCam();
-                }
-                if(data.type === 'chat') {
-                    document.getElementById('chat-box').innerHTML += `<p>Admin: ${data.val}</p>`;
+                    // Logic thực hiện lệnh (Cam/Mic/Swap...)
                 }
             });
-        }
-
-        function toggleMyDevice(type) {
-            if(!localStream) return;
-            if(type === 'cam') localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled;
-            if(type === 'mic') localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled;
-            sendStatus();
-        }
-
-        async function swapMyCam() {
-            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-            localStream.getTracks().forEach(t => t.stop());
-            localStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: currentFacingMode}, audio: true});
-            document.getElementById('local-video').srcObject = localStream;
-            peer.call(document.getElementById('admin-id').value, localStream);
-            sendStatus();
-        }
-
-        function sendStatus() {
-            if(conn && conn.open) {
-                conn.send({type: 'status', cam: localStream.getVideoTracks()[0].enabled, mic: localStream.getAudioTracks()[0].enabled});
-            }
-        }
-
-        function sendMsg() {
-            const input = document.getElementById('chat-input');
-            conn.send({type: 'chat', val: input.value});
-            document.getElementById('chat-box').innerHTML += `<p>Tôi: ${input.value}</p>`;
-            input.value = '';
         }
     </script>
 </body>
