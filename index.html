@@ -4,37 +4,81 @@
     <meta charset="UTF-8">
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        /* Sử dụng cùng style với Admin ở trên */
-        body { background: #0f0f0f; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; font-family: sans-serif; }
-        .panel { background: #1a1a1a; padding: 20px; border-radius: 20px; width: 400px; }
-        video { width: 100%; border-radius: 15px; }
-        button { padding: 12px; width: 100%; border: none; border-radius: 12px; background: #28a745; color: white; margin-top: 10px; cursor: pointer; }
+        /* Dùng chung CSS như Admin để đồng bộ */
+        body { background: #0f0f0f; color: white; display: flex; justify-content: center; padding: 20px; font-family: sans-serif; }
+        .wrapper { display: flex; gap: 20px; width: 900px; }
+        .panel { background: #1a1a1a; padding: 20px; border-radius: 20px; flex: 2; }
+        video { width: 100%; border-radius: 12px; }
+        .led-group { display: flex; gap: 10px; margin: 15px 0; }
+        .led { padding: 5px 12px; border-radius: 20px; background: #333; }
+        .led.cam-on { background: #22c55e; } .led.cam-off { background: #ef4444; }
+        .chat-panel { flex: 1; background: #1a1a1a; border-radius: 20px; padding: 20px; }
     </style>
 </head>
 <body>
-    <div class="panel">
-        <h2>Máy Phụ</h2>
-        <input id="admin-id" placeholder="ID Admin" style="padding: 10px; width: 90%; border-radius: 10px;">
-        <button onclick="startConnection()">Kết Nối</button>
-        <video id="local-video" autoplay playsinline muted></video>
-        <button class="danger" onclick="window.location.reload()">❌ Ngắt Kết Nối</button>
+    <div class="wrapper">
+        <div class="panel">
+            <h2>Máy Phụ</h2>
+            <input id="admin-id" placeholder="Nhập ID Admin">
+            <button onclick="startConnection()">Kết nối</button>
+            <video id="local-video" autoplay playsinline muted></video>
+            <div class="led-group">
+                <span id="my-led-cam" class="led cam-off">Cam: Tắt</span>
+                <span id="my-led-mic" class="led mic-off">Mic: Tắt</span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <button onclick="toggleMy('cam')">📷 Cam</button>
+                <button onclick="toggleMy('mic')">🎙️ Mic</button>
+                <button onclick="swapCam()">🔄 Đổi Cam</button>
+                <button onclick="location.reload()" style="background:#991b1b">❌ Ngắt</button>
+            </div>
+        </div>
+        <div class="chat-panel">
+            <h3>Chat</h3>
+            <div id="chat-box"></div>
+            <input id="chat-input" placeholder="Nhắn tin...">
+            <button onclick="sendMsg()">Gửi</button>
+        </div>
     </div>
     <script>
-        const peer = new Peer();
-        let conn, localStream;
+        const peer = new Peer(); let conn, localStream, mode = 'user';
         async function startConnection() {
-            const id = document.getElementById('admin-id').value;
-            localStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+            localStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: mode}, audio: true});
             document.getElementById('local-video').srcObject = localStream;
-            conn = peer.connect(id);
-            peer.call(id, localStream);
-            conn.on('data', (data) => {
-                if(data.val === 'disconnect') window.location.reload();
-                if(data.type === 'cmd') {
-                    // Logic thực hiện lệnh (Cam/Mic/Swap...)
+            conn = peer.connect(document.getElementById('admin-id').value);
+            peer.call(document.getElementById('admin-id').value, localStream);
+            updateLeds();
+            conn.on('data', (d) => {
+                if(d.type === 'cmd') {
+                    if(d.val === 'toggle-cam') toggleMy('cam');
+                    if(d.val === 'toggle-mic') toggleMy('mic');
+                    if(d.val === 'swap-cam') swapCam();
+                    if(d.val === 'disconnect') location.reload();
                 }
+                if(d.type === 'chat') document.getElementById('chat-box').innerHTML += `<p>Admin: ${d.val}</p>`;
             });
         }
+        function toggleMy(type) {
+            if(type==='cam') localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled;
+            else localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled;
+            updateLeds();
+        }
+        async function swapCam() {
+            mode = mode === 'user' ? 'environment' : 'user';
+            localStream.getTracks().forEach(t=>t.stop());
+            localStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:mode}, audio:true});
+            document.getElementById('local-video').srcObject = localStream;
+            peer.call(document.getElementById('admin-id').value, localStream);
+            updateLeds();
+        }
+        function updateLeds() {
+            const c = localStream.getVideoTracks()[0].enabled;
+            const m = localStream.getAudioTracks()[0].enabled;
+            document.getElementById('my-led-cam').className = `led cam-${c?'on':'off'}`;
+            document.getElementById('my-led-mic').className = `led mic-${m?'on':'off'}`;
+            if(conn) conn.send({type: 'status', cam: c, mic: m});
+        }
+        function sendMsg() { const i = document.getElementById('chat-input'); conn.send({type: 'chat', val: i.value}); document.getElementById('chat-box').innerHTML += `<p>Tôi: ${i.value}</p>`; i.value=''; }
     </script>
 </body>
 </html>
