@@ -2,18 +2,42 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <title>Máy Phụ - Control Panel</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { background: #121212; color: white; display: flex; gap: 20px; padding: 20px; font-family: sans-serif; }
+        .main-col { flex: 1; display: flex; flex-direction: column; align-items: center; }
+        #local-video { width: 500px; height: 280px; background: #000; border-radius: 10px; border: 2px solid #333; object-fit: cover; }
+        .chat-col { width: 300px; height: 400px; background: #1a1a1a; border: 1px solid #333; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+        #chat-box { flex: 1; padding: 10px; overflow-y: auto; font-size: 0.9rem; }
+        .controls { margin-top: 15px; display: flex; gap: 10px; }
+        button { padding: 10px 15px; border-radius: 6px; border: none; background: #333; color: white; cursor: pointer; }
+        button:hover { background: #555; }
+        .connect-box { margin-bottom: 20px; }
+    </style>
 </head>
 <body>
-    <h3>Máy Phụ</h3>
-    <input type="text" id="admin-id" placeholder="Nhập ID Admin">
-    <button onclick="startConnection()">Kết nối</button>
-    <video id="local-video" width="300" autoplay playsinline muted></video>
+    <div class="main-col">
+        <h2>Máy Phụ</h2>
+        <div class="connect-box">
+            <input type="text" id="admin-id" placeholder="Nhập ID Admin">
+            <button onclick="startConnection()">Kết nối</button>
+        </div>
+        <video id="local-video" autoplay playsinline muted></video>
+        
+        <div class="controls">
+            <button onclick="toggleMyDevice('cam')">📷 Cam</button>
+            <button onclick="toggleMyDevice('mic')">🎙️ Mic</button>
+            <button onclick="swapMyCam()">🔄 Đổi Cam</button>
+        </div>
+    </div>
 
-    <div>
-        <button onclick="toggleMyDevice('cam')">📷 Bật/Tắt Cam Tôi</button>
-        <button onclick="toggleMyDevice('mic')">🎙️ Bật/Tắt Mic Tôi</button>
-        <button onclick="swapMyCam()">🔄 Đổi Cam Tôi</button>
+    <div class="chat-col">
+        <div id="chat-box"></div>
+        <div style="display:flex; padding:5px;">
+            <input type="text" id="chat-input" style="flex:1" placeholder="Chat với Admin..." onkeypress="if(event.key==='Enter') sendMsg()">
+            <button onclick="sendMsg()">Gửi</button>
+        </div>
     </div>
 
     <script>
@@ -24,17 +48,27 @@
             const adminId = document.getElementById('admin-id').value;
             localStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: currentFacingMode}, audio: true});
             document.getElementById('local-video').srcObject = localStream;
+            
             conn = peer.connect(adminId);
             peer.call(adminId, localStream);
-            sendStatus();
-
+            
             conn.on('data', (data) => {
                 if(data.type === 'cmd') {
                     if(data.val === 'toggle-cam') toggleMyDevice('cam');
                     if(data.val === 'toggle-mic') toggleMyDevice('mic');
                     if(data.val === 'swap-cam') swapMyCam();
                 }
+                if(data.type === 'chat') {
+                    document.getElementById('chat-box').innerHTML += `<p>Admin: ${data.val}</p>`;
+                }
             });
+        }
+
+        function toggleMyDevice(type) {
+            if(!localStream) return;
+            if(type === 'cam') localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled;
+            if(type === 'mic') localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled;
+            sendStatus();
         }
 
         async function swapMyCam() {
@@ -46,21 +80,17 @@
             sendStatus();
         }
 
-        function toggleMyDevice(type) {
-            if(!localStream) return;
-            if(type === 'cam') localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled;
-            if(type === 'mic') localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled;
-            sendStatus();
-        }
-
         function sendStatus() {
             if(conn && conn.open) {
-                conn.send({
-                    type: 'status', 
-                    cam: localStream.getVideoTracks()[0].enabled,
-                    mic: localStream.getAudioTracks()[0].enabled
-                });
+                conn.send({type: 'status', cam: localStream.getVideoTracks()[0].enabled, mic: localStream.getAudioTracks()[0].enabled});
             }
+        }
+
+        function sendMsg() {
+            const input = document.getElementById('chat-input');
+            conn.send({type: 'chat', val: input.value});
+            document.getElementById('chat-box').innerHTML += `<p>Tôi: ${input.value}</p>`;
+            input.value = '';
         }
     </script>
 </body>
