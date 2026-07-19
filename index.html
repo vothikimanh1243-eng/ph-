@@ -4,93 +4,84 @@
     <meta charset="UTF-8">
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        /* Dùng chung CSS như Admin để đồng bộ */
-        body { background: #0f0f0f; color: white; display: flex; justify-content: center; padding: 20px; font-family: sans-serif; }
-        .wrapper { display: flex; gap: 20px; width: 900px; }
-        .panel { background: #1a1a1a; padding: 20px; border-radius: 20px; flex: 2; }
-        video { width: 100%; border-radius: 12px; }
-        .led-group { display: flex; gap: 10px; margin: 15px 0; }
-        .led { padding: 5px 12px; border-radius: 20px; background: #333; }
-        .led.cam-on { background: #22c55e; } .led.cam-off { background: #ef4444; }
-        .chat-panel { flex: 1; background: #1a1a1a; border-radius: 20px; padding: 20px; }
+        /* Dùng chung bộ CSS với Admin để đạt độ thẩm mỹ 100% */
+        body { background: #0f0f0f; color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding: 20px; }
+        .wrapper { display: flex; gap: 20px; width: 1000px; }
+        .box { background: #1a1a1a; padding: 25px; border-radius: 20px; flex: 2; border: 1px solid #333; }
+        video { width: 100%; border-radius: 15px; border: 2px solid #444; background: #000; }
+        .led-group { display: flex; gap: 15px; margin: 20px 0; }
+        .led { padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; }
+        .led.on { background: #22c55e; color: #064e3b; }
+        .led.off { background: #ef4444; color: #7f1d1d; }
+        .chat-panel { flex: 1; background: #1a1a1a; border-radius: 20px; padding: 20px; border: 1px solid #333; }
+        #chat-box { height: 350px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
+        button { padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; background: #333; color: white; }
     </style>
 </head>
 <body>
     <div class="wrapper">
-        <div class="panel">
+        <div class="box">
             <h2>Máy Phụ</h2>
-            <input id="admin-id" placeholder="Nhập ID Admin">
-            <button onclick="startConnection()">Kết nối</button>
+            <input id="admin-id" placeholder="ID Admin" style="padding:10px; border-radius:10px;">
+            <button onclick="start()">Kết nối</button>
             <video id="local-video" autoplay playsinline muted></video>
             <div class="led-group">
-                <span id="my-led-cam" class="led cam-off">Cam: Tắt</span>
-                <span id="my-led-mic" class="led mic-off">Mic: Tắt</span>
+                <span id="led-cam" class="led off">Cam: Tắt</span>
+                <span id="led-mic" class="led off">Mic: Tắt</span>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-                <button onclick="toggleMy('cam')">📷 Cam</button>
-                <button onclick="toggleMy('mic')">🎙️ Mic</button>
-                <button onclick="swapCam()">🔄 Đổi Cam</button>
-                <button onclick="location.reload()" style="background:#991b1b">❌ Ngắt</button>
+                <button onclick="toggle('cam')">📷 Cam</button>
+                <button onclick="toggle('mic')">🎙️ Mic</button>
+                <button onclick="swap()">🔄 Đổi Cam</button>
+                <button onclick="location.reload()" style="background:#7f1d1d">❌ Ngắt</button>
             </div>
         </div>
         <div class="chat-panel">
             <h3>Chat</h3>
             <div id="chat-box"></div>
-            <input id="chat-input" placeholder="Nhắn tin...">
+            <input id="chat-input" style="width:70%; padding:8px" placeholder="Nhắn...">
             <button onclick="sendMsg()">Gửi</button>
         </div>
     </div>
     <script>
-        const peer = new Peer(); let conn, localStream, mode = 'user';
-        async function startConnection() {
-            localStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: mode}, audio: true});
-            document.getElementById('local-video').srcObject = localStream;
+        const peer = new Peer(); let conn, stream, mode = 'user';
+        async function start() {
+            stream = await navigator.mediaDevices.getUserMedia({video: {facingMode:mode}, audio: true});
+            document.getElementById('local-video').srcObject = stream;
             conn = peer.connect(document.getElementById('admin-id').value);
-            peer.call(document.getElementById('admin-id').value, localStream);
+            peer.call(document.getElementById('admin-id').value, stream);
             updateLeds();
-            conn.on('data', (d) => {
+            conn.on('data', d => {
                 if(d.type === 'cmd') {
-                    if(d.val === 'toggle-cam') toggleMy('cam');
-                    if(d.val === 'toggle-mic') toggleMy('mic');
-                    if(d.val === 'swap-cam') swapCam();
+                    if(d.val === 'toggle-cam') toggle('cam');
+                    if(d.val === 'toggle-mic') toggle('mic');
+                    if(d.val === 'swap-cam') swap();
                     if(d.val === 'disconnect') location.reload();
                 }
                 if(d.type === 'chat') document.getElementById('chat-box').innerHTML += `<p>Admin: ${d.val}</p>`;
             });
         }
-        function toggleMy(type) {
-            if(type==='cam') localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled;
-            else localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled;
+        function toggle(t) {
+            if(t==='cam') stream.getVideoTracks()[0].enabled = !stream.getVideoTracks()[0].enabled;
+            else stream.getAudioTracks()[0].enabled = !stream.getAudioTracks()[0].enabled;
             updateLeds();
         }
-        async function swapCam() {
-            mode = mode === 'user' ? 'environment' : 'user';
-            localStream.getTracks().forEach(t=>t.stop());
-            localStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:mode}, audio:true});
-            document.getElementById('local-video').srcObject = localStream;
-            peer.call(document.getElementById('admin-id').value, localStream);
+        async function swap() {
+            mode = mode==='user'?'environment':'user'; stream.getTracks().forEach(t=>t.stop());
+            stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:mode}, audio:true});
+            document.getElementById('local-video').srcObject = stream;
+            peer.call(document.getElementById('admin-id').value, stream);
             updateLeds();
         }
-      function updateLeds() {
-    const c = localStream.getVideoTracks()[0].enabled;
-    const m = localStream.getAudioTracks()[0].enabled;
-    
-    // Cập nhật LED Cam
-    const ledCam = document.getElementById('my-led-cam');
-    ledCam.className = `led cam-${c ? 'on' : 'off'}`;
-    ledCam.innerText = c ? 'Cam: Bật' : 'Cam: Tắt';
-    
-    // Cập nhật LED Mic
-    const ledMic = document.getElementById('my-led-mic');
-    ledMic.className = `led mic-${m ? 'on' : 'off'}`;
-    ledMic.innerText = m ? 'Mic: Bật' : 'Mic: Tắt';
-    
-    // Gửi trạng thái về cho Admin
-    if(conn && conn.open) {
-        conn.send({type: 'status', cam: c, mic: m});
-    }
-}
-        function sendMsg() { const i = document.getElementById('chat-input'); conn.send({type: 'chat', val: i.value}); document.getElementById('chat-box').innerHTML += `<p>Tôi: ${i.value}</p>`; i.value=''; }
+        function updateLeds() {
+            const c = stream.getVideoTracks()[0].enabled, m = stream.getAudioTracks()[0].enabled;
+            document.getElementById('led-cam').className = `led ${c?'on':'off'}`;
+            document.getElementById('led-cam').innerText = c ? 'Cam: Bật' : 'Cam: Tắt';
+            document.getElementById('led-mic').className = `led ${m?'on':'off'}`;
+            document.getElementById('led-mic').innerText = m ? 'Mic: Bật' : 'Mic: Tắt';
+            if(conn) conn.send({type:'status', cam:c, mic:m});
+        }
+        function sendMsg() { const i = document.getElementById('chat-input'); conn.send({type:'chat', val: i.value}); document.getElementById('chat-box').innerHTML += `<p>Tôi: ${i.value}</p>`; i.value=''; }
     </script>
 </body>
 </html>
