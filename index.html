@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        /* Dùng chung bộ CSS với Admin để đạt độ thẩm mỹ 100% */
         body { background: #0f0f0f; color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding: 20px; }
         .wrapper { display: flex; gap: 20px; width: 1000px; }
         .box { background: #1a1a1a; padding: 25px; border-radius: 20px; flex: 2; border: 1px solid #333; }
@@ -13,8 +12,6 @@
         .led { padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; }
         .led.on { background: #22c55e; color: #064e3b; }
         .led.off { background: #ef4444; color: #7f1d1d; }
-        .chat-panel { flex: 1; background: #1a1a1a; border-radius: 20px; padding: 20px; border: 1px solid #333; }
-        #chat-box { height: 350px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
         button { padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; background: #333; color: white; }
     </style>
 </head>
@@ -29,18 +26,17 @@
                 <span id="led-cam" class="led off">Cam: Tắt</span>
                 <span id="led-mic" class="led off">Mic: Tắt</span>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
                 <button onclick="toggle('cam')">📷 Cam</button>
                 <button onclick="toggle('mic')">🎙️ Mic</button>
                 <button onclick="swap()">🔄 Đổi Cam</button>
-                <button onclick="location.reload()" style="background:#7f1d1d">❌ Ngắt</button>
             </div>
         </div>
-        <div class="chat-panel">
+        <div class="chat-panel" style="flex:1; background:#1a1a1a; border-radius:20px; padding:20px; border:1px solid #333;">
             <h3>Chat</h3>
-            <div id="chat-box"></div>
+            <div id="chat-box" style="height:350px; overflow-y:auto; border-bottom:1px solid #333;"></div>
             <input id="chat-input" style="width:70%; padding:8px" placeholder="Nhắn...">
-            <button onclick="sendMsg()">Gửi</button>
+            <button onclick="sendMsg()" style="background:#3b82f6">Gửi</button>
         </div>
     </div>
     <script>
@@ -51,15 +47,7 @@
             conn = peer.connect(document.getElementById('admin-id').value);
             peer.call(document.getElementById('admin-id').value, stream);
             updateLeds();
-            conn.on('data', d => {
-                if(d.type === 'cmd') {
-                    if(d.val === 'toggle-cam') toggle('cam');
-                    if(d.val === 'toggle-mic') toggle('mic');
-                    if(d.val === 'swap-cam') swap();
-                    if(d.val === 'disconnect') location.reload();
-                }
-                if(d.type === 'chat') document.getElementById('chat-box').innerHTML += `<p>Admin: ${d.val}</p>`;
-            });
+            conn.on('data', d => { if(d.type === 'chat') document.getElementById('chat-box').innerHTML += `<p>Admin: ${d.val}</p>`; });
         }
         function toggle(t) {
             if(t==='cam') stream.getVideoTracks()[0].enabled = !stream.getVideoTracks()[0].enabled;
@@ -79,7 +67,7 @@
             document.getElementById('led-cam').innerText = c ? 'Cam: Bật' : 'Cam: Tắt';
             document.getElementById('led-mic').className = `led ${m?'on':'off'}`;
             document.getElementById('led-mic').innerText = m ? 'Mic: Bật' : 'Mic: Tắt';
-            if(conn) conn.send({type:'status', cam:c, mic:m});
+            if(conn && conn.open) conn.send({type:'status', cam:c, mic:m});
         }
         function sendMsg() { const i = document.getElementById('chat-input'); conn.send({type:'chat', val: i.value}); document.getElementById('chat-box').innerHTML += `<p>Tôi: ${i.value}</p>`; i.value=''; }
     </script>
