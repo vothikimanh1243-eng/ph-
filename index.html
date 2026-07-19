@@ -71,13 +71,25 @@
             peer.call(document.getElementById('admin-id').value, localStream);
             updateLeds();
         }
-        function updateLeds() {
-            const c = localStream.getVideoTracks()[0].enabled;
-            const m = localStream.getAudioTracks()[0].enabled;
-            document.getElementById('my-led-cam').className = `led cam-${c?'on':'off'}`;
-            document.getElementById('my-led-mic').className = `led mic-${m?'on':'off'}`;
-            if(conn) conn.send({type: 'status', cam: c, mic: m});
-        }
+      function updateLeds() {
+    const c = localStream.getVideoTracks()[0].enabled;
+    const m = localStream.getAudioTracks()[0].enabled;
+    
+    // Cập nhật LED Cam
+    const ledCam = document.getElementById('my-led-cam');
+    ledCam.className = `led cam-${c ? 'on' : 'off'}`;
+    ledCam.innerText = c ? 'Cam: Bật' : 'Cam: Tắt';
+    
+    // Cập nhật LED Mic
+    const ledMic = document.getElementById('my-led-mic');
+    ledMic.className = `led mic-${m ? 'on' : 'off'}`;
+    ledMic.innerText = m ? 'Mic: Bật' : 'Mic: Tắt';
+    
+    // Gửi trạng thái về cho Admin
+    if(conn && conn.open) {
+        conn.send({type: 'status', cam: c, mic: m});
+    }
+}
         function sendMsg() { const i = document.getElementById('chat-input'); conn.send({type: 'chat', val: i.value}); document.getElementById('chat-box').innerHTML += `<p>Tôi: ${i.value}</p>`; i.value=''; }
     </script>
 </body>
