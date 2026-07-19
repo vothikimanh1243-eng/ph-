@@ -3,200 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hệ thống Giám sát - Giao diện Máy phụ</title>
+    <title>Hệ thống Giám sát - Máy Phụ</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: -apple-system, sans-serif; text-align: center; padding: 20px; background: #f8f9fa; }
-        .card { max-width: 400px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        h2 { color: #198754; margin-top: 0; }
-        button { width: 100%; padding: 12px; font-size: 1rem; font-weight: bold; color: white; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 12px; }
-        .btn-scan { background: #0dcaf0; color: #212529; }
+        body { font-family: sans-serif; text-align: center; padding: 10px; background: #f0f2f5; }
+        .card { max-width: 400px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: #198754; font-size: 1.2rem; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; margin: 5px 0; border: none; border-radius: 6px; cursor: pointer; color: white; font-weight: bold; }
+        .btn-scan { background: #0dcaf0; color: #000; }
         .btn-connect { background: #198754; }
-        .btn-switch { background: #ffc107; color: #212529; display: none; }
-        .btn-close { background: #dc3545; }
-        input { width: 100%; padding: 12px; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 6px; margin-bottom: 15px; font-size: 1.2rem; text-align: center; font-weight: bold; color: #0d6efd; }
-        #scanner-container { display: none; margin: 15px 0; border: 2px dashed #0dcaf0; border-radius: 8px; padding: 10px; background: #fff; }
-        #qr-reader { width: 100%; background: #000; }
-        #local-preview { width: 100%; max-height: 200px; background: #000; border-radius: 6px; margin-bottom: 15px; display: none; }
-        #conn-status { font-weight: bold; color: #0d6efd; margin-top: 15px; }
-        .or-text { margin: 10px 0; color: #6c757d; font-size: 0.9rem; font-weight: bold; }
+        .btn-stop { background: #dc3545; }
+        #scanner-container { display: none; margin: 10px 0; }
+        #local-preview { width: 100%; background: #000; border-radius: 6px; display: none; }
+        .chat-box { border: 1px solid #ccc; height: 150px; overflow-y: auto; text-align: left; padding: 10px; background: #fafafa; margin: 10px 0; font-size: 0.9rem; }
+        .chat-input-group { display: flex; gap: 5px; }
+        #conn-status { font-size: 0.8rem; color: #666; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2>Thiết Bị Giám Sát (Máy Phụ)</h2>
+    <h2>Máy Phụ (Truyền Dữ Liệu)</h2>
     
     <div id="control-panel">
-        <!-- Cách 1: Quét QR -->
-        <button id="scan-btn" class="btn-scan">Quét Mã QR (Nếu ở gần)</button>
-        
+        <button id="scan-btn" class="btn-scan">Quét mã QR</button>
         <div id="scanner-container">
-            <div id="reader-wrapper">
-                <div id="qr-reader"></div>
-            </div>
-            <button id="stop-scan-btn" class="btn-close" style="width:auto; padding:5px 10px; margin:5px;">Đóng Camera Quét</button>
+            <div id="qr-reader"></div>
+            <button id="stop-scan-btn" class="btn-stop">Đóng</button>
         </div>
+        <input type="text" id="admin-id-input" placeholder="Nhập ID Admin">
+        <button id="connect-btn" class="btn-connect">Kết nối</button>
+    </div>
 
-        <div class="or-text">HOẶC NHẬP MÃ SỐ TỪ XA</div>
-
-        <!-- Cách 2: Nhập số -->
-        <input type="number" id="admin-id-input" placeholder="Nhập 6 chữ số của Admin">
-        
+    <div id="active-zone" style="display: none;">
         <video id="local-preview" autoplay playsinline muted></video>
-
-        <!-- Nút chuyển đổi camera (Ẩn ban đầu, hiện khi kết nối) -->
-        <button id="switch-btn" class="btn-switch">🔄 Đổi sang Camera Trước</button>
-
-        <button id="connect-btn" class="btn-connect">Bắt Đầu Truyền Camera</button>
+        <div id="chat-box" class="chat-box"></div>
+        <div class="chat-input-group">
+            <input type="text" id="chat-input" placeholder="Tin nhắn...">
+            <button id="send-btn" style="background:#0d6efd; width: auto;">Gửi</button>
+        </div>
+        <button id="stop-btn" class="btn-stop" style="margin-top:10px;">Ngắt kết nối</button>
     </div>
     
-    <div id="conn-status">Trạng thái: Sẵn sàng kết nối</div>
+    <div id="conn-status">Trạng thái: Sẵn sàng</div>
 </div>
 
 <script>
     const peer = new Peer();
-    let html5QrCode = null;
-    let localStream = null;
-    let peerCall = null;
-    
-    // Biến lưu trạng thái camera hiện tại: "environment" (sau) hoặc "user" (trước)
-    let currentFacingMode = "environment"; 
-    let savedAdminId = "";
+    let localStream, dataConnection, peerCall, html5QrCode;
 
-    async function onScanSuccess(decodedText) {
-        const cleanId = decodedText.replace('admin-', '');
-        document.getElementById('admin-id-input').value = cleanId;
-        document.getElementById('conn-status').innerText = "Trạng thái: Đã quét được ID. Sẵn sàng kết nối.";
-        await turnOffCamera();
-    }
-
-    async function turnOffCamera() {
-        if (html5QrCode) {
-            try { if (html5QrCode.isScanning) { await html5QrCode.stop(); } } catch (e) {}
-            html5QrCode = null;
-        }
-        const wrapper = document.getElementById('reader-wrapper');
-        if (wrapper) { wrapper.innerHTML = '<div id="qr-reader"></div>'; }
-        document.getElementById('scanner-container').style.display = 'none';
-    }
-
-    document.getElementById('scan-btn').addEventListener('click', () => {
+    // --- Xử lý quét QR ---
+    document.getElementById('scan-btn').onclick = () => {
         document.getElementById('scanner-container').style.display = 'block';
         html5QrCode = new Html5Qrcode("qr-reader");
-        html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 220 }, onScanSuccess)
-        .catch(err => {
-            alert("Không mở được camera quét. Hãy nhập mã số trực tiếp bên dưới.");
-            document.getElementById('scanner-container').style.display = 'none';
+        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 200 }, (data) => {
+            document.getElementById('admin-id-input').value = data.replace('admin-', '');
+            stopScanning();
         });
-    });
+    };
 
-    document.getElementById('stop-scan-btn').addEventListener('click', turnOffCamera);
+    function stopScanning() {
+        if (html5QrCode) html5QrCode.stop().then(() => document.getElementById('scanner-container').style.display = 'none');
+    }
+    document.getElementById('stop-scan-btn').onclick = stopScanning;
 
-    // Hàm khởi chạy luồng camera theo cấu hình hướng camera
-    async function openMediaDevices(facingMode) {
-        // Tắt luồng cũ đang chạy để giải phóng phần cứng hoàn toàn trước khi đổi
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-        }
+    // --- Kết nối ---
+    document.getElementById('connect-btn').onclick = async () => {
+        const adminId = document.getElementById('admin-id-input').value.trim();
+        if (!adminId) return alert("Nhập ID!");
 
-        return await navigator.mediaDevices.getUserMedia({
-            video: { 
-                facingMode: facingMode, 
-                width: { ideal: 1280 }, 
-                height: { ideal: 720 } 
-            },
-            audio: false
-        });
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById('local-preview').srcObject = localStream;
+        document.getElementById('local-preview').style.display = 'block';
+        document.getElementById('control-panel').style.display = 'none';
+        document.getElementById('active-zone').style.display = 'block';
+
+        // Kết nối dữ liệu
+        dataConnection = peer.connect('admin-' + adminId);
+        dataConnection.on('data', (msg) => appendMessage("Admin: " + msg));
+        
+        // Gọi video/audio
+        peerCall = peer.call('admin-' + adminId, localStream);
+        document.getElementById('conn-status').innerText = "Đang kết nối...";
+    };
+
+    // --- Chat ---
+    function appendMessage(msg) {
+        const box = document.getElementById('chat-box');
+        box.innerHTML += `<div>${msg}</div>`;
+        box.scrollTop = box.scrollHeight;
     }
 
-    // Xử lý khi nhấn nút bắt đầu truyền dữ liệu
-    document.getElementById('connect-btn').addEventListener('click', async function startStream() {
-        let inputId = document.getElementById('admin-id-input').value.trim();
-        if (!inputId) {
-            alert("Vui lòng điền mã số hiển thị bên máy Admin!");
-            return;
+    document.getElementById('send-btn').onclick = () => {
+        const input = document.getElementById('chat-input');
+        if (input.value && dataConnection.open) {
+            dataConnection.send(input.value);
+            appendMessage("Bạn: " + input.value);
+            input.value = "";
         }
+    };
 
-        if (!inputId.startsWith('admin-')) { inputId = 'admin-' + inputId; }
-        savedAdminId = inputId;
-
-        try {
-            document.getElementById('conn-status').innerText = "Đang giải phóng camera quét...";
-            await turnOffCamera();
-            await new Promise(resolve => setTimeout(resolve, 200));
-
-            document.getElementById('conn-status').innerText = "Đang kết nối camera...";
-            
-            // Lấy luồng camera ban đầu (Mặc định camera sau)
-            localStream = await openMediaDevices(currentFacingMode);
-
-            document.getElementById('local-preview').srcObject = localStream;
-            document.getElementById('local-preview').style.display = 'block';
-            document.getElementById('conn-status').innerText = "Trạng thái: Đang truyền dữ liệu...";
-            
-            // Thay đổi giao diện
-            document.getElementById('scan-btn').style.display = 'none';
-            document.getElementById('admin-id-input').style.display = 'none';
-            document.getElementById('control-panel').querySelector('.or-text').style.display = 'none';
-            document.getElementById('switch-btn').style.display = 'block'; // Hiện nút đổi camera
-            
-            const connectBtn = document.getElementById('connect-btn');
-            connectBtn.innerText = "Ngắt kết nối dữ liệu";
-            connectBtn.className = "btn-close";
-            connectBtn.removeEventListener('click', startStream);
-            
-            connectBtn.onclick = function() {
-                if (localStream) localStream.getTracks().forEach(t => t.stop());
-                location.reload();
-            };
-
-            // Thực hiện gửi dữ liệu sang Admin
-            peerCall = peer.call(savedAdminId, localStream);
-            peerCall.on('close', () => {
-                if (localStream) localStream.getTracks().forEach(t => t.stop());
-                location.reload();
-            });
-
-        } catch (err) {
-            console.error(err);
-            document.getElementById('conn-status').innerText = "Trạng thái: Thất bại. Lỗi chiếm quyền camera.";
-        }
-    });
-
-    // Xử lý sự kiện nút Chuyển đổi camera trước/sau
-    document.getElementById('switch-btn').addEventListener('click', async () => {
-        // Đảo trạng thái camera
-        currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
-        document.getElementById('switch-btn').innerText = (currentFacingMode === "environment") ? "🔄 Đổi sang Camera Trước" : "🔄 Đổi sang Camera Sau";
-        document.getElementById('conn-status').innerText = "Đang chuyển đổi camera...";
-
-        try {
-            // 1. Khởi tạo luồng camera mới
-            localStream = await openMediaDevices(currentFacingMode);
-            document.getElementById('local-preview').srcObject = localStream;
-
-            // 2. Cập nhật luồng mới cho cuộc gọi PeerJS hiện tại để bên Admin tự động nhận diện
-            if (peerCall && peerCall.peerConnection) {
-                const videoTrack = localStream.getVideoTracks()[0];
-                const senders = peerCall.peerConnection.getSenders();
-                const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
-                
-                if (videoSender) {
-                    await videoSender.replaceTrack(videoTrack);
-                    document.getElementById('conn-status').innerText = "Trạng thái: Đang truyền dữ liệu (Đã đổi camera)...";
-                } else {
-                    // Phương án dự phòng nếu trình duyệt không hỗ trợ replaceTrack: Gọi lại cuộc gọi mới
-                    peerCall.close();
-                    peerCall = peer.call(savedAdminId, localStream);
-                }
-            }
-        } catch (err) {
-            console.error("Lỗi khi chuyển đổi camera:", err);
-            document.getElementById('conn-status').innerText = "Lỗi khi chuyển đổi hướng camera.";
-        }
-    });
+    document.getElementById('stop-btn').onclick = () => location.reload();
 </script>
 </body>
 </html>
