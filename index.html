@@ -1,58 +1,42 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html>
 <head>
-    <meta charset="UTF-8">
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { background: #000; color: #fff; text-align: center; font-family: sans-serif; }
-        #local-video { width: 100%; max-width: 400px; border: 2px solid #333; }
-        .controls { padding: 20px; }
+        #remote-video { width: 640px; height: 360px; background: black; transition: 0.3s; }
     </style>
 </head>
 <body>
-    <h3>Máy Phụ: Truyền hình ảnh</h3>
-    <video id="local-video" autoplay playsinline muted></video>
+    <h2>Admin - ID: <span id="my-id">...</span></h2>
+    <video id="remote-video" autoplay playsinline></video>
     
     <div class="controls">
-        <input type="text" id="admin-id" placeholder="Nhập 6 số ID của Admin">
-        <button onclick="startConnection()">Kết nối</button>
+        <button onclick="sendCmd('toggle-cam')">📷 Bật/Tắt Cam</button>
+        <button onclick="sendCmd('toggle-mic')">🎙️ Mic</button>
+        <button onclick="toggleLayout()">📱/💻 Đổi Giao Diện</button>
+        <button onclick="sendCmd('disconnect')" style="color:red;">❌ Ngắt</button>
     </div>
 
     <script>
         const peer = new Peer();
-        let localStream, conn;
+        let conn;
+        peer.on('open', (id) => document.getElementById('my-id').innerText = id);
 
-        // Hàm khởi tạo camera chuẩn 100% không lỗi
-        async function startConnection() {
-            const adminId = document.getElementById('admin-id').value;
-            if (!adminId) return alert("Vui lòng nhập ID Admin!");
+        peer.on('call', (call) => {
+            call.answer();
+            call.on('stream', (s) => document.getElementById('remote-video').srcObject = s);
+        });
 
-            try {
-                // Yêu cầu quyền truy cập Camera & Mic
-                localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "user" }, 
-                    audio: true 
-                });
-                document.getElementById('local-video').srcObject = localStream;
+        peer.on('connection', (c) => { conn = c; });
 
-                // Kết nối dữ liệu và gọi video
-                conn = peer.connect(adminId);
-                peer.call(adminId, localStream);
+        function sendCmd(cmd) { if(conn) conn.send({type: 'cmd', val: cmd}); }
 
-                // Lắng nghe lệnh từ Admin
-                conn.on('data', (data) => {
-                    const videoTrack = localStream.getVideoTracks()[0];
-                    const audioTrack = localStream.getAudioTracks()[0];
-
-                    if (data.type === 'cmd') {
-                        if (data.val === 'toggle-cam') videoTrack.enabled = !videoTrack.enabled;
-                        if (data.val === 'toggle-mic') audioTrack.enabled = !audioTrack.enabled;
-                        if (data.val === 'disconnect') window.location.reload();
-                    }
-                });
-            } catch (err) {
-                console.error("Lỗi Camera:", err);
-                alert("Hãy cấp quyền Camera cho trang web!");
+        function toggleLayout() {
+            const v = document.getElementById('remote-video');
+            if (v.style.width === '360px') {
+                v.style.width = '640px'; v.style.height = '360px';
+            } else {
+                v.style.width = '360px'; v.style.height = '640px';
             }
         }
     </script>
