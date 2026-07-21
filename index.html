@@ -2,74 +2,186 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <title>Client Device - WebRTC Stream</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { background: #0f0f0f; color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding: 20px; }
-        .wrapper { display: flex; gap: 20px; width: 1000px; }
-        .box { background: #1a1a1a; padding: 25px; border-radius: 20px; flex: 2; border: 1px solid #333; }
-        video { width: 100%; border-radius: 15px; border: 2px solid #444; background: #000; }
-        .led-group { display: flex; gap: 15px; margin: 20px 0; }
-        .led { padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 0.9rem; }
-        .led.on { background: #22c55e; color: #064e3b; }
-        .led.off { background: #ef4444; color: #7f1d1d; }
-        button { padding: 12px; border: none; border-radius: 10px; cursor: pointer; font-weight: bold; background: #333; color: white; }
+        :root { --bg: #0b0f19; --panel: #111827; --border: #1f2937; --accent: #3b82f6; --on: #10b981; --off: #ef4444; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #f9fafb; font-family: system-ui, -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 1200px; }
+        .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+        .video-box { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .video-label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 500; }
+        .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        button { padding: 10px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; background: #374151; color: white; font-size: 0.85rem; }
+        button:hover { filter: brightness(1.2); }
+        .btn-primary { background: var(--accent); }
+        .led-group { display: flex; gap: 10px; }
+        .led { padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .led.on { background: rgba(16, 185, 129, 0.2); color: var(--on); border: 1px solid var(--on); }
+        .led.off { background: rgba(239, 68, 68, 0.2); color: var(--off); border: 1px solid var(--off); }
+        .chat-box { height: 160px; overflow-y: auto; background: #07090e; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 6px; }
+        .chat-input-group { display: flex; gap: 10px; }
+        input { flex: 1; background: #07090e; border: 1px solid var(--border); border-radius: 8px; padding: 10px; color: white; outline: none; }
+        input:focus { border-color: var(--accent); }
+        .connect-box { display: flex; gap: 10px; }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <div class="box">
-            <h2>Máy Phụ</h2>
-            <input id="admin-id" placeholder="ID Admin" style="padding:10px; border-radius:10px;">
-            <button onclick="start()">Kết nối</button>
-            <video id="local-video" autoplay playsinline muted></video>
-            <div class="led-group">
-                <span id="led-cam" class="led off">Cam: Tắt</span>
-                <span id="led-mic" class="led off">Mic: Tắt</span>
+    <div class="container">
+        <!-- Panel Máy Phụ -->
+        <div class="card">
+            <h2>📱 Máy Phụ (Client)</h2>
+            <div class="connect-box">
+                <input id="admin-id" placeholder="Nhập ID Admin...">
+                <button class="btn-primary" onclick="startConnection()">Kết Nối</button>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-                <button onclick="toggle('cam')">📷 Cam</button>
-                <button onclick="toggle('mic')">🎙️ Mic</button>
-                <button onclick="swap()">🔄 Đổi Cam</button>
+            
+            <div class="video-box">
+                <span class="video-label">Camera Của Bạn (Local)</span>
+                <video id="local-video" autoplay playsinline muted></video>
+            </div>
+            
+            <div class="led-group">
+                <span id="led-cam" class="led on">Cam: Bật</span>
+                <span id="led-mic" class="led on">Mic: Bật</span>
+            </div>
+
+            <div class="controls">
+                <button onclick="toggleCam()">📷 Cam</button>
+                <button onclick="toggleMic()">🎙️ Mic</button>
+                <button onclick="swapCam()">🔄 Đổi Cam</button>
             </div>
         </div>
-        <div class="chat-panel" style="flex:1; background:#1a1a1a; border-radius:20px; padding:20px; border:1px solid #333;">
-            <h3>Chat</h3>
-            <div id="chat-box" style="height:350px; overflow-y:auto; border-bottom:1px solid #333;"></div>
-            <input id="chat-input" style="width:70%; padding:8px" placeholder="Nhắn...">
-            <button onclick="sendMsg()" style="background:#3b82f6">Gửi</button>
+
+        <!-- Panel Màn Hình Admin & Chat -->
+        <div class="card">
+            <h2>🖥️ Màn Hình Admin</h2>
+            <div class="video-box">
+                <span class="video-label">Camera Admin (Remote)</span>
+                <video id="remote-video" autoplay playsinline></video>
+            </div>
+            
+            <div style="height: 42px;"></div> <!-- Giữ cân đối layout -->
+
+            <div class="chat-box" id="chat-box"></div>
+            <div class="chat-input-group">
+                <input id="chat-input" placeholder="Nhập tin nhắn..." onkeypress="if(event.key==='Enter') sendMsg()">
+                <button class="btn-primary" onclick="sendMsg()">Gửi</button>
+            </div>
         </div>
     </div>
+
     <script>
-        const peer = new Peer(); let conn, stream, mode = 'user';
-        async function start() {
-            stream = await navigator.mediaDevices.getUserMedia({video: {facingMode:mode}, audio: true});
-            document.getElementById('local-video').srcObject = stream;
-            conn = peer.connect(document.getElementById('admin-id').value);
-            peer.call(document.getElementById('admin-id').value, stream);
-            updateLeds();
-            conn.on('data', d => { if(d.type === 'chat') document.getElementById('chat-box').innerHTML += `<p>Admin: ${d.val}</p>`; });
+        const peer = new Peer();
+        let conn, localStream, camMode = 'user';
+
+        // Khởi tạo camera ban đầu cho máy phụ
+        async function initStream() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: camMode }, 
+                    audio: true 
+                });
+                document.getElementById('local-video').srcObject = localStream;
+            } catch (err) {
+                alert("Vui lòng cấp quyền Camera/Mic!");
+            }
         }
-        function toggle(t) {
-            if(t==='cam') stream.getVideoTracks()[0].enabled = !stream.getVideoTracks()[0].enabled;
-            else stream.getAudioTracks()[0].enabled = !stream.getAudioTracks()[0].enabled;
-            updateLeds();
+        initStream();
+
+        async function startConnection() {
+            const adminId = document.getElementById('admin-id').value.trim();
+            if(!adminId) return alert("Vui lòng nhập ID Admin!");
+
+            // Kết nối Data Channel
+            conn = peer.connect(adminId);
+            setupConnEvents();
+
+            // Gọi Video Call sang Admin
+            const call = peer.call(adminId, localStream);
+            call.on('stream', stream => {
+                document.getElementById('remote-video').srcObject = stream;
+            });
+            
+            alert("Đã kết nối thành công!");
         }
-        async function swap() {
-            mode = mode==='user'?'environment':'user'; stream.getTracks().forEach(t=>t.stop());
-            stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:mode}, audio:true});
-            document.getElementById('local-video').srcObject = stream;
-            peer.call(document.getElementById('admin-id').value, stream);
-            updateLeds();
+
+        // Lắng nghe cuộc gọi ngược lại từ Admin (nếu có)
+        peer.on('call', call => {
+            call.answer(localStream);
+            call.on('stream', stream => {
+                document.getElementById('remote-video').srcObject = stream;
+            });
+        });
+
+        function setupConnEvents() {
+            conn.on('data', d => {
+                if(d.type === 'cmd') {
+                    if(d.val === 'toggle-cam') toggleCam();
+                    if(d.val === 'toggle-mic') toggleMic();
+                    if(d.val === 'swap-cam') swapCam();
+                }
+                if(d.type === 'chat') {
+                    appendChat('Admin', d.val);
+                }
+            });
         }
-        function updateLeds() {
-            const c = stream.getVideoTracks()[0].enabled, m = stream.getAudioTracks()[0].enabled;
-            document.getElementById('led-cam').className = `led ${c?'on':'off'}`;
+
+        function toggleCam() {
+            if(!localStream) return;
+            const track = localStream.getVideoTracks()[0];
+            track.enabled = !track.enabled;
+            updateStatus();
+        }
+
+        function toggleMic() {
+            if(!localStream) return;
+            const track = localStream.getAudioTracks()[0];
+            track.enabled = !track.enabled;
+            updateStatus();
+        }
+
+        async function swapCam() {
+            camMode = camMode === 'user' ? 'environment' : 'user';
+            localStream.getTracks().forEach(t => t.stop());
+            localStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: camMode }, 
+                audio: true 
+            });
+            document.getElementById('local-video').srcObject = localStream;
+            updateStatus();
+        }
+
+        function updateStatus() {
+            const c = localStream.getVideoTracks()[0].enabled;
+            const m = localStream.getAudioTracks()[0].enabled;
+            
+            document.getElementById('led-cam').className = `led ${c ? 'on' : 'off'}`;
             document.getElementById('led-cam').innerText = c ? 'Cam: Bật' : 'Cam: Tắt';
-            document.getElementById('led-mic').className = `led ${m?'on':'off'}`;
+            
+            document.getElementById('led-mic').className = `led ${m ? 'on' : 'off'}`;
             document.getElementById('led-mic').innerText = m ? 'Mic: Bật' : 'Mic: Tắt';
-            if(conn && conn.open) conn.send({type:'status', cam:c, mic:m});
+
+            if(conn && conn.open) {
+                conn.send({ type: 'status', cam: c, mic: m });
+            }
         }
-        function sendMsg() { const i = document.getElementById('chat-input'); conn.send({type:'chat', val: i.value}); document.getElementById('chat-box').innerHTML += `<p>Tôi: ${i.value}</p>`; i.value=''; }
+
+        function sendMsg() {
+            const input = document.getElementById('chat-input');
+            if(!input.value.trim() || !conn) return;
+            conn.send({ type: 'chat', val: input.value });
+            appendChat('Tôi', input.value);
+            input.value = '';
+        }
+
+        function appendChat(sender, msg) {
+            const box = document.getElementById('chat-box');
+            box.innerHTML += `<div><b>${sender}:</b> ${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
     </script>
 </body>
 </html>
